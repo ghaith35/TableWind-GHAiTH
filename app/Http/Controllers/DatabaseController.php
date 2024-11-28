@@ -1,8 +1,8 @@
 <?php
-
 namespace App\Http\Controllers;
+
 use Illuminate\Http\Request;
-use DB;
+use Illuminate\Support\Facades\DB;  // This is the correct import
 
 class DatabaseController extends Controller
 {
@@ -34,58 +34,6 @@ class DatabaseController extends Controller
             return response()->json(['error' => 'Failed to fetch tables. ' . $e->getMessage()], 500);
         }
     }
-
-    // Execute SQL Query and save to history
-    public function runQuery(Request $request)
-    {
-        $sqlQuery = $request->input('sql_query');
-
-        try {
-            // Execute the query
-            $result = DB::select(DB::raw($sqlQuery));
-
-            // Save the query in the General_QUERY_table
-            DB::table('General_QUERY_table')->insert([
-                'content_query' => $sqlQuery,
-                // timestamp_insert is handled automatically by the database
-            ]);
-
-            // Return the query result
-            return response()->json([
-                'success' => true,
-                'message' => 'Query executed and saved successfully.',
-                'data' => $result
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Query execution failed: ' . $e->getMessage()
-            ]);
-        }
-
-        
-    }
-
-    // Fetch query history
-    public function getQueryHistory()
-    {
-        try {
-            // Fetch query history sorted by timestamp_insert
-            $history = DB::table('General_QUERY_table')
-                ->orderBy('timestamp_insert', 'desc')
-                ->get();
-
-            return response()->json(['history' => $history]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'error' => 'Failed to fetch query history. ' . $e->getMessage()
-            ], 500);
-        }
-    }
-  
-
-
-
 
 
 }
