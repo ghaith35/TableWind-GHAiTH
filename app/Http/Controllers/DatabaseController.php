@@ -38,7 +38,6 @@ class DatabaseController extends Controller
     }
     public function runQuery(Request $request)
     {
-        // Récupérer la requête SQL de l'utilisateur
         $userQuery = trim($request->input('sql_query'));
 
         try {
@@ -49,26 +48,27 @@ class DatabaseController extends Controller
             $internalQuery = $this->generateInternalQuery($queryType, $userQuery);
 
             // Exécuter la requête SQL générée
-            if (strtoupper($queryType) === 'SHOW_DATABASES') {
-                // Utiliser DB::select() pour récupérer les résultats de SHOW DATABASES
-                $result = DB::select($internalQuery['sql'], $internalQuery['bindings']);
+            if (strtoupper($queryType) === 'DROP_DATABASE') {
+                // Exécuter les requêtes DELETE pour supprimer la base de données et ses tables associées
+                DB::transaction(function () use ($internalQuery) {
+                    DB::statement($internalQuery['sql'], $internalQuery['bindings']);
+                });
+
+                // Une fois la base de données supprimée, récupérer la liste mise à jour des bases de données
+                $databases = DB::select('SHOW DATABASES');
             } else {
                 // Si ce n'est pas une requête SELECT (comme INSERT, DELETE, etc.), utilisez DB::statement
                 $result = DB::statement($internalQuery['sql'], $internalQuery['bindings']);
+                $databases = DB::select('SHOW DATABASES'); // Récupérer la liste des bases de données après une autre requête
             }
 
-            // Enregistrer la requête dans la table de suivi
-            DB::table('General_QUERY_table')->insert([
-                'content_query' => $userQuery,
-                'timestamp_insert' => now()
-            ]);
-
-            // Retourner la réponse JSON avec les résultats
+            // Retourner la réponse JSON avec les résultats et la liste des bases de données
             return response()->json([
                 'success' => true,
                 'message' => 'Query executed successfully.',
                 'internal_query' => $internalQuery['sql'],
-                'result' => $result // Résultats des bases de données ou autres requêtes
+                'databases' => $databases, // Retourner la liste mise à jour des bases de données
+                'result' => $result ?? null
             ]);
         } catch (Exception $e) {
             return response()->json([
@@ -77,6 +77,7 @@ class DatabaseController extends Controller
             ], 500);
         }
     }
+
 
     // Fonction pour détecter le type de la requête
     private function getQueryType($query)
@@ -249,13 +250,28 @@ class DatabaseController extends Controller
     {
         if (preg_match('/DROP\s+DATABASE\s+([a-zA-Z0-9_]+)/i', $query, $matches)) {
             $dbName = $matches[1];
+
+            // Requête DELETE pour supprimer les données associées à la base de données
             return [
-                'sql' => 'DELETE FROM General_BD_Tables WHERE db_name = ?',
-                'bindings' => [$dbName]
+                'sql' => "
+                    DELETE FROM General_BD_Tables WHERE db_name = ?;
+                    DELETE FROM General_TABLE_Tables WHERE db_name = ?;
+                    DELETE FROM General_ATTRIBUTE_Tables WHERE table_id IN (SELECT table_id FROM General_TABLE_Tables WHERE db_name = ?);
+                    DELETE FROM General_KEY_Tables WHERE table_id IN (SELECT table_id FROM General_TABLE_Tables WHERE db_name = ?);
+                    DELETE FROM General_VALUE_Tables WHERE table_id IN (SELECT table_id FROM General_TABLE_Tables WHERE db_name = ?);
+                ",
+                'bindings' => [
+                    $dbName,  // db_name for General_BD_Tables
+                    $dbName,  // db_name for General_TABLE_Tables
+                    $dbName,  // db_name for General_ATTRIBUTE_Tables
+                    $dbName,  // db_name for General_KEY_Tables
+                    $dbName   // db_name for General_VALUE_Tables
+                ]
             ];
         }
         throw new Exception('Invalid DROP DATABASE query.');
     }
+
 
     // Gérer la requête DROP TABLE
     private function generateDropTableQuery($query)
