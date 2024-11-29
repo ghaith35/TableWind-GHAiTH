@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;  // This is the correct import
+use Illuminate\Support\Facades\Log;
+
 
 class DatabaseController extends Controller
 {
@@ -49,7 +51,7 @@ class DatabaseController extends Controller
 
             // Exécuter la requête SQL générée
             if (strtoupper($queryType) === 'DROP_DATABASE') {
-                // Exécuter les requêtes DELETE pour supprimer la base de données et ses tables associées
+                // Exécuter les requêtes DELETE pour supprimer la base de données et ses tables associées dans une transaction
                 DB::transaction(function () use ($internalQuery) {
                     DB::statement($internalQuery['sql'], $internalQuery['bindings']);
                 });
@@ -71,12 +73,20 @@ class DatabaseController extends Controller
                 'result' => $result ?? null
             ]);
         } catch (Exception $e) {
+            // Log l'exception complète pour mieux comprendre l'erreur
+            Log::error('Query execution failed: ' . $e->getMessage());
+
+            // Afficher l'erreur détaillée dans la réponse JSON
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to execute query: ' . $e->getMessage()
+                'message' => 'Failed to execute query: ' . $e->getMessage(),
+                'error_details' => $e->getTraceAsString() // Afficher les détails de l'exception
             ], 500);
         }
     }
+
+
+
 
 
     // Fonction pour détecter le type de la requête
@@ -137,9 +147,9 @@ class DatabaseController extends Controller
             case 'DROP_DATABASE':
                 return $this->generateDropDatabaseQuery($query);
 
-            case 'DROP_TABLE':
+                /*case 'DROP_TABLE':
                 return $this->generateDropTableQuery($query);
-
+*/
             case 'ALTER_TABLE':
                 return $this->generateAlterTableQuery($query);
 
@@ -245,46 +255,71 @@ class DatabaseController extends Controller
         throw new Exception('Invalid UPDATE query.');
     }
 
-    // Gérer la requête DROP DATABASE
+
     private function generateDropDatabaseQuery($query)
     {
+        // Check if the query matches a DROP DATABASE statement
         if (preg_match('/DROP\s+DATABASE\s+([a-zA-Z0-9_]+)/i', $query, $matches)) {
             $dbName = $matches[1];
 
-            // Requête DELETE pour supprimer les données associées à la base de données
-            return [
-                'sql' => "
-                    DELETE FROM General_BD_Tables WHERE db_name = ?;
-                    DELETE FROM General_TABLE_Tables WHERE db_name = ?;
-                    DELETE FROM General_ATTRIBUTE_Tables WHERE table_id IN (SELECT table_id FROM General_TABLE_Tables WHERE db_name = ?);
-                    DELETE FROM General_KEY_Tables WHERE table_id IN (SELECT table_id FROM General_TABLE_Tables WHERE db_name = ?);
-                    DELETE FROM General_VALUE_Tables WHERE table_id IN (SELECT table_id FROM General_TABLE_Tables WHERE db_name = ?);
-                ",
-                'bindings' => [
-                    $dbName,  // db_name for General_BD_Tables
-                    $dbName,  // db_name for General_TABLE_Tables
-                    $dbName,  // db_name for General_ATTRIBUTE_Tables
-                    $dbName,  // db_name for General_KEY_Tables
-                    $dbName   // db_name for General_VALUE_Tables
-                ]
-            ];
+            // Use Laravel's DB facade to safely escape the database name
+            $escapedDbName = $dbName; // No additional escaping needed for prepared statements
+
+            // Begin a database transaction
+            DB::beginTransaction();
+
+            try {
+                $query1 = "DELETE FROM general_fkey_attribute_tables WHERE constraint_id IN (SELECT id_bd FROM general_bd_tables WHERE db_name = ?)";
+                DB::statement($query1, [$escapedDbName]);
+                $executedQueries[] = $query1;
+
+                $query2 = "DELETE FROM general_attribute_tables WHERE id_table IN (SELECT id_bd FROM general_bd_tables WHERE db_name = ?)";
+                DB::statement($query2, [$escapedDbName]);
+                $executedQueries[] = $query2;
+
+                $query3 = "DELETE FROM general_fkey_tables WHERE source_table_id IN (SELECT id_bd FROM general_bd_tables WHERE db_name = ?) OR target_table_id IN (SELECT id_bd FROM general_bd_tables WHERE db_name = ?)";
+                DB::statement($query3, [$escapedDbName, $escapedDbName]);
+                $executedQueries[] = $query3;
+
+                $query4 = "DELETE FROM general_bd_tables WHERE db_name = ?";
+                DB::statement($query4, [$escapedDbName]);
+                $executedQueries[] = $query4;
+
+                // Now, drop the database
+                $query5 = "DROP DATABASE IF EXISTS `$escapedDbName`";
+                DB::statement($query5);
+                $executedQueries[] = $query5;
+                // Commit the transaction
+                return response()->json([
+                    'message' => 'Database and associated records dropped successfully.',
+                    'queries' => $executedQueries,
+                ]);
+                DB::commit();
+
+                // Return success response
+
+            } catch (Exception $e) {
+                // Rollback the transaction if any query fails
+                DB::rollBack();
+
+                // Log the exception details
+                Log::error('Failed to execute DROP DATABASE query', [
+                    'exception_message' => $e->getMessage(),
+                    'exception_code' => $e->getCode(),
+                    'stack_trace' => $e->getTraceAsString(),
+                ]);
+
+                // Return a generic error response
+            }
         }
+
+        // If the query doesn't match the DROP DATABASE pattern, throw an exception
         throw new Exception('Invalid DROP DATABASE query.');
     }
 
 
-    // Gérer la requête DROP TABLE
-    private function generateDropTableQuery($query)
-    {
-        if (preg_match('/DROP\s+TABLE\s+([a-zA-Z0-9_]+)/i', $query, $matches)) {
-            $tableName = $matches[1];
-            return [
-                'sql' => 'DELETE FROM General_TABLE_Tables WHERE table_name = ?',
-                'bindings' => [$tableName]
-            ];
-        }
-        throw new Exception('Invalid DROP TABLE query.');
-    }
+
+
 
     // Gérer les requêtes ALTER TABLE (par exemple, ajouter une colonne)
     private function generateAlterTableQuery($query)
