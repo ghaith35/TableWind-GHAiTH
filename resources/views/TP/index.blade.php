@@ -353,6 +353,56 @@ function highlightSelectedDb(dbName) {
 }
 
 
+function handleShowTablesResponse(response) {
+    if (response.success) {
+        const dbName = response.db_name;
+        const dbId = response.db_id;
+
+        // Update the query input with 'USE' statement
+        document.getElementById('sql-query').value = `USE ${dbName};\nSHOW TABLES;`;
+
+        // Remove 'selected-db' class from all database items
+        document.querySelectorAll('.database-item').forEach(item => {
+            item.classList.remove('selected-db');
+        });
+
+        // Add 'selected-db' class to the clicked item
+        const clickedItem = event.currentTarget;
+        clickedItem.classList.add('selected-db');
+
+        // Clear previous table selection
+        const tableSelection = document.getElementById('table-selection');
+        tableSelection.innerHTML = '';
+
+        // Debugging: Log response.tables to check its content
+        console.log('Tables received:', response.tables);
+
+        // Check if the tables array is present and not empty
+        if (response.tables && Array.isArray(response.tables) && response.tables.length > 0) {
+            response.tables.forEach(function(table) {
+                const tableDiv = document.createElement('div');
+                tableDiv.classList.add('table-item');
+                tableDiv.innerText = table;
+
+                // Add an onclick event to fetch table content
+                tableDiv.onclick = () => {
+                    document.getElementById('query-command-title').innerText = `Content of ${table}`;
+                    fetchTableContent(table); // Assuming fetchTableContent is defined elsewhere
+                };
+
+                // Append table div to the table selection div
+                tableSelection.appendChild(tableDiv);
+            });
+        } else {
+            // If no tables found, display a message
+            tableSelection.innerHTML = 'No tables found for this database.';
+        }
+    } else {
+        // Handle errors in the response
+        alert(response.error);
+    }
+}
+
 
 
         // Fonction pour réinitialiser les résultats et la zone de saisie

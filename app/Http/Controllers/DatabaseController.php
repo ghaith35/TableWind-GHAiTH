@@ -43,61 +43,93 @@ class DatabaseController extends Controller
         }
     }
 
-
-    /////////////////////////////////////////////////////////////
     public function runQuery(Request $request)
-{
-    $userQuery = trim($request->input('sql_query'));
-    $response = ['success' => false, 'message' => ''];
-
-    try {
-        // Detect the type of the query
-        $queryType = $this->getQueryType($userQuery);
-
-        // Generate the internal query based on the detected type
-        $internalQuery = $this->generateInternalQuery($queryType, $userQuery);
-        
-        // Handle 'USE' queries
-        if ($queryType == 'USE') {
-            if (preg_match('/USE\s+([a-zA-Z0-9_]+)/i', $userQuery, $matches)) {
-                $dbName = $matches[1];
-            // You can return the selected database name along with other data
+    {
+        $userQuery = trim($request->input('sql_query'));
+        $response = ['success' => false, 'message' => ''];
+    
+        try {
+            // Detect the type of the query
+            $queryType = $this->getQueryType($userQuery);
+            
+            // Handle 'USE' queries
+            if ($queryType == 'USE') {
+                if (preg_match('/USE\s+([a-zA-Z0-9_]+)/i', $userQuery, $matches)) {
+                    $dbName = $matches[1];
+                    session(['selected_db' => $dbName]);
+                    return response()->json([
+                        'success' => true,
+                        'selected_db' => $dbName,
+                    ]);
+                }
+            }
+            // Handle 'SHOW TABLES' queries
+            elseif ($queryType == 'SHOW_TABLES') {
+                $dbName = session('selected_db');
+                
+                if ($dbName) {
+                    $dbRecord = DB::table('general_bd_tables')
+                                  ->where('db_name', $dbName)
+                                  ->first();
+    
+                    if ($dbRecord) {
+                        $tablesResponse = $this->getTables($dbRecord->id_bd);
+    
+                        if ($tablesResponse->getStatusCode() == 200) {
+                            $tables = json_decode($tablesResponse->getContent(), true)['tables'];
+                            return response()->json([
+                                'success' => true,
+                                'db_name' => $dbName,
+                                'db_id' => $dbRecord->id_bd,
+                                'tables' => $tables
+                            ]);
+                        }
+                        return $tablesResponse;
+                    } else {
+                        return response()->json(['success' => false, 'error' => 'Database not found.']);
+                    }
+                } else {
+                    return response()->json(['success' => false, 'error' => 'No database selected.']);
+                }
+            }
+            // Handle 'ALTER TABLE MODIFY NAME' queries
+            elseif ($queryType == 'MODIFY_TABLE') {
+                $dbName = session('selected_db');
+                if (!$dbName) {
+                    throw new \Exception('No database selected.');
+                }
+    
+                $alterResult = $this->modifyTable($userQuery);
+                DB::update($alterResult['sql'], $alterResult['bindings']);
+    
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Table modified successfully.'
+                ]);
+            }
+            // Handle other query types: INSERT, SELECT, DELETE, etc.
+            else {
+                $internalQuery = $this->generateInternalQuery($queryType, $userQuery);
+                $result = DB::statement($internalQuery['sql'], $internalQuery['bindings']);
+    
+                // Refresh databases or fetch new data depending on query type
+                $databases = DB::select('SELECT db_name FROM general_bd_tables');
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Query executed successfully.',
+                    'databases' => $databases,
+                    'result' => $result ?? null
+                ]);
+            }
+        } catch (\Exception $e) {
             return response()->json([
-                'success' => true,
-                'selected_db' => $dbName,
-                // other data as needed
-            ]);
-        }else{
-            $result = DB::statement($internalQuery['sql'], $internalQuery['bindings']);
-        // }
-
-        // Refresh the list of databases after operations
-        $databases = DB::select('SELECT  db_name from GENERAL_BD_TABLES ');
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Query executed successfully.',
-            'internal_query' => $internalQuery['sql'],
-            'databases' => $databases,
-            'result' => $result ?? null
-        ]);
+                'success' => false,
+                'message' => 'Error: ' . $e->getMessage(),
+            ], 500);
         }
-        
-        // // Handle database operations (e.g., DROP_DATABASE, CREATE_DATABASE)
-        // if (strtoupper($queryType) === 'DROP_DATABASE') {
-        //     DB::transaction(function () use ($internalQuery) {
-        //         DB::statement($internalQuery['sql'], $internalQuery['bindings']);
-        //     });
-        // } else {
-            // For other queries like INSERT, DELETE, etc., use DB::statement
-        }      
-    } catch (Exception $e) {
-        return response()->json([
-            'success' => false,
-            'message' => 'Failed to execute query: ' . $e->getMessage()
-        ], 500);
     }
-}
+    
+
 
 
 
@@ -234,6 +266,28 @@ class DatabaseController extends Controller
             return [
                 'sql' => 'UPDATE general_bd_tables SET db_name = ? WHERE db_name = ?',
                 'bindings' => [$newDbName, $oldDbName]
+            ];
+        }
+        throw new Exception('Invalid ALTER DATABASE query.');
+    }
+    private function modifyTable($query)
+    {
+
+        $dbName = session('selected_db');
+        $dbRecord = DB::table('general_bd_tables')
+        ->where('db_name', $dbName)
+        ->first();
+        // dd($dbRecord->id_bd);
+        // Vérifier si une base de données a été sélectionnée
+        if (!$dbName) {
+            throw new Exception('No database selected. Use the "USE" command to select a database.');
+        }
+        if (preg_match('/ALTER\s+TABLE\s+([a-zA-Z0-9_]+)\s+RENAME\s+TO\s+([a-zA-Z0-9_]+)/i', $query, $matches)) {
+            $oldTableName = $matches[1];
+            $newTableName = $matches[2];
+            return [
+                'sql' => 'UPDATE General_TABLE_Tables SET table_name = ? WHERE table_name = ? AND db_id = ?;',
+                'bindings' => [$newTableName,$oldTableName,$dbRecord->id_bd]
             ];
         }
         throw new Exception('Invalid ALTER DATABASE query.');
@@ -383,6 +437,7 @@ private function showTables($query)
                 'bindings' => [$dbName]
             ];
         }
-        throw new Exception('Invalid CREATE DATABASE query.');
+        throw new Exception('Invalid query.');
     }
 }
+
