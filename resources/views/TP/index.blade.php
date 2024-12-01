@@ -143,10 +143,12 @@
         .content {
             display: flex;
             gap: 20px;
-            height: 50%;
+            height: 70%;
         }
 
         .content-half {
+
+            width:480px;
             flex: 1;
             background-color: #fff;
             border-radius: 10px;
@@ -182,15 +184,72 @@
             background-color: #e9ecef;
             transform: translateX(5px);
         }
-    .selected-db {
-        background-color: #d1e7dd;  /* Light green background for selection */
-        color: #0f5132;             /* Dark green text for contrast */
-        font-weight: bold;          /* Optional: Highlight text */
-    }
-.selected-query {
-    background-color: #d4edda; /* Light green for selection */
-    border-left: 5px solid #28a745; /* Green border for emphasis */
-    transform: scale(1.02); /* Slightly enlarge on selection */
+        .selected-db {
+    background-color: #4CAF50; /* Green */
+    color: white;
+}
+
+/* General table styling */
+#result-output table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 20px 0;
+    font-size: 16px;
+    text-align: left;
+}
+
+/* Table header styling */
+#result-output table thead tr {
+    background-color: #4CAF50;
+    color: #ffffff;
+    text-align: left;
+}
+
+/* Table header and cell borders */
+#result-output table th,
+#result-output table td {
+    padding: 12px 15px;
+    border: 1px solid #dddddd;
+}
+
+/* Alternate row background color */
+#result-output table tbody tr:nth-child(even) {
+    background-color: #f3f3f3;
+}
+
+/* Hover effect for rows */
+#result-output table tbody tr:hover {
+    background-color: #f1f1f1;
+}
+
+/* Optional: Add a box-shadow for a lifted effect */
+#result-output table {
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Style for selected database indicator */
+
+
+/* Style for selected table */
+.selected-table {
+    background-color: #28a745; /* Green color */
+    color: white; /* Text color for contrast */
+}
+#internal-query-output{
+    width:100%;
+
+}
+#result-output, #internal-query-output {
+    height: 120%;  /* Occupy the full height of the container */
+    overflow-y: auto;  /* Make the content scrollable if it exceeds the height */
+}
+
+
+
+/* Optional: Limit the height of the content area to prevent overflow */
+.query-results {
+    max-height: 700px;  /* You can adjust this value to your preferred height */
+    overflow-y: auto;   /* Enable scrolling if content exceeds this height */
 }
 
 </style>
@@ -228,20 +287,20 @@
         </div>
 
         <div class="content">
-            <div class="content-half query-results">
-                <h2>Query Result</h2>
-                <!-- Tableau pour afficher les résultats -->
-                <div id="result-output">
-                    <!-- Le tableau sera généré ici -->
-                </div>
-            </div>
+        <div class="content-half query-results">
+    <h2>Query Result</h2>
+    <div id="result-output">
+        <!-- Le tableau sera généré ici -->
+    </div>
+</div>
 
-            <div class="content-half query-results">
-                <h2>Internal Query</h2>
-                <div id="internal-query-output">
-                    <!-- La requête interne sera affichée ici -->
-                </div>
-            </div>
+<div class="content-half query-results">
+    <h2>Internal Query</h2>
+    <div id="internal-query-output">
+        <!-- La requête interne sera affichée ici -->
+    </div>
+</div>
+
 
         </div>
     </div>
@@ -291,23 +350,46 @@
 
                     // Highlight the selected database in the sidebar
                     highlightSelectedDb(response.selected_db);
-                }('#sql-query').val(`USE ${response.selected_db};`); // Optional: highlight the query or set focus
-                
 
-                // Vérifier si le résultat est un tableau (comme pour SHOW DATABASES)
-                if (response.databases && Array.isArray(response.databases)) {
-                    // Créer un tableau HTML pour afficher les bases de données
+                    // Optional: highlight the query or set focus to the query input after the USE command
+                    $('#sql-query').val(`USE ${response.selected_db};`);
+                }
+
+                // Handle query result if it's a table (like SELECT, SHOW TABLES, etc.)
+                if (response.columns && response.data) {
+                    let resultHtml = '<table border="1" cellpadding="10" cellspacing="0"><thead><tr>';
+                    
+                    // Create table headers from columns
+                    response.columns.forEach(function(column) {
+                        resultHtml += `<th>${column}</th>`;
+                    });
+                    resultHtml += '</tr></thead><tbody>';
+
+                    // Create table rows from the data
+                    let rowCount = response.data[response.columns[0]].length; // Get the number of rows
+                    for (let i = 0; i < rowCount; i++) {
+                        resultHtml += '<tr>';
+                        response.columns.forEach(function(column) {
+                            resultHtml += `<td>${response.data[column][i]}</td>`;
+                        });
+                        resultHtml += '</tr>';
+                    }
+
+                    resultHtml += '</tbody></table>';
+                    $('#result-output').html(resultHtml);
+                } else if (response.databases && Array.isArray(response.databases)) {
+                    // Handle databases listing (e.g., from SHOW DATABASES)
                     let resultHtml = '<table border="1" cellpadding="10" cellspacing="0">';
                     resultHtml += '<thead><tr>';
 
-                    // Créer les en-têtes du tableau (en fonction des clés de l'objet)
+                    // Create table headers based on the keys of the database object
                     Object.keys(response.databases[0]).forEach(function(key) {
                         resultHtml += `<th>${key}</th>`;
                     });
 
                     resultHtml += '</tr></thead><tbody>';
 
-                    // Créer les lignes du tableau avec les données
+                    // Create rows for each database entry
                     response.databases.forEach(function(row) {
                         resultHtml += '<tr>';
                         Object.values(row).forEach(function(value) {
@@ -318,26 +400,27 @@
 
                     resultHtml += '</tbody></table>';
 
-                    // Afficher le tableau dans la div #result-output
+                    // Display the database table
                     $('#result-output').html(resultHtml);
                 } else {
-                    // Si le résultat n'est pas un tableau (cas de requêtes non SELECT)
+                    // If the result is not a table, just show the result as JSON
                     $('#result-output').html('<pre>' + JSON.stringify(response.result, null, 2) + '</pre>');
                 }
 
-                // Afficher la requête interne dans la section dédiée (pas dans le titre)
-                $('#internal-query-output').html('<pre>' + response.internal_query + '</pre>');
+                // Display the internal query in a separate section
+                $('#internal-query-output').html('<pre>' + response.internal_query +  '</pre>');
             } else {
-                // Si la requête échoue
+                // Handle failure response
                 alert('Error: ' + response.message);
             }
         },
         error: function(xhr, status, error) {
-            // En cas d'erreur de requête
+            // In case of an AJAX error
             alert('Failed to execute query: ' + error);
         }
     });
 }
+
 function highlightSelectedDb(dbName) {
     // Remove 'selected-db' class from all database items
     document.querySelectorAll('.database-item').forEach(item => {
@@ -353,77 +436,43 @@ function highlightSelectedDb(dbName) {
 }
 
 
-function handleShowTablesResponse(response) {
-    if (response.success) {
-        const dbName = response.db_name;
-        const dbId = response.db_id;
 
-        // Update the query input with 'USE' statement
-        document.getElementById('sql-query').value = `USE ${dbName};\nSHOW TABLES;`;
 
-        // Remove 'selected-db' class from all database items
-        document.querySelectorAll('.database-item').forEach(item => {
-            item.classList.remove('selected-db');
-        });
-
-        // Add 'selected-db' class to the clicked item
-        const clickedItem = event.currentTarget;
-        clickedItem.classList.add('selected-db');
-
-        // Clear previous table selection
-        const tableSelection = document.getElementById('table-selection');
-        tableSelection.innerHTML = '';
-
-        // Debugging: Log response.tables to check its content
-        console.log('Tables received:', response.tables);
-
-        // Check if the tables array is present and not empty
-        if (response.tables && Array.isArray(response.tables) && response.tables.length > 0) {
-            response.tables.forEach(function(table) {
-                const tableDiv = document.createElement('div');
-                tableDiv.classList.add('table-item');
-                tableDiv.innerText = table;
-
-                // Add an onclick event to fetch table content
-                tableDiv.onclick = () => {
-                    document.getElementById('query-command-title').innerText = `Content of ${table}`;
-                    fetchTableContent(table); // Assuming fetchTableContent is defined elsewhere
-                };
-
-                // Append table div to the table selection div
-                tableSelection.appendChild(tableDiv);
-            });
-        } else {
-            // If no tables found, display a message
-            tableSelection.innerHTML = 'No tables found for this database.';
+function loadTables(dbId, dbName) {
+    // Step 1: Send the 'USE ${dbname}' query via AJAX to the controller
+    $.ajax({
+        url: '/run-query', // The route to the controller method that handles the query
+        type: 'POST',
+        data: {
+            sql_query: `USE ${dbName};`, // The SQL query to use the selected database
+            _token: $('meta[name="csrf-token"]').attr('content') // CSRF token for security
+        },
+        success: function(response) {
+            // Handle the response from the 'USE' query (if needed)
+            if (response.success) {
+                console.log('Database changed to: ' + dbName);
+            } else {
+                alert('Failed to switch database: ' + response.message);
+            }
+        },
+        error: function(xhr, status, error) {
+            alert('Error while switching database: ' + error);
         }
-    } else {
-        // Handle errors in the response
-        alert(response.error);
-    }
-}
+    });
 
-
-
-        // Fonction pour réinitialiser les résultats et la zone de saisie
-
-
-
-        // Updated function to handle table loading and populating the query input
-    function loadTables(dbId, dbName) {
-    // Populate the query input with 'USE' statement
+    // Step 2: Set the SQL query in the textarea for showing tables
     document.getElementById('sql-query').value = `USE ${dbName};\nSHOW TABLES;`;
 
-    // Remove 'selected-db' class from all database items
+    // Step 3: Remove 'selected-db' class from all database items
     document.querySelectorAll('.database-item').forEach(item => {
         item.classList.remove('selected-db');
     });
 
-    // Add 'selected-db' class to the clicked item
+    // Step 4: Add 'selected-db' class to the clicked database item
     const clickedItem = event.currentTarget;
     clickedItem.classList.add('selected-db');
 
-    // Fetch tables from the server for the selected database
+    // Step 5: Fetch tables from the server for the selected database
     $.get('/tables/' + dbId)
         .done(function(data) {
             const tableSelection = document.getElementById('table-selection');
@@ -435,10 +484,34 @@ function handleShowTablesResponse(response) {
                     tableDiv.classList.add('table-item');
                     tableDiv.innerText = table;
 
-                    tableDiv.onclick = () => {
-                        document.getElementById('query-command-title').innerText = `Content of ${table}`;
-                        fetchTableContent(table);
+                    // Add click event listener to highlight the selected table
+                    tableDiv.onclick = function () {
+                        // Remove 'selected-table' class from all table items
+                        document.querySelectorAll('.table-item').forEach(item => {
+                            item.classList.remove('selected-table');
+                        });
+
+                        // Add 'selected-table' class to the clicked table item
+                        this.classList.add('selected-table');
+
+                        // Send AJAX request when tableDiv is clicked
+                        $.ajax({
+                            url: '/select', // Route to Laravel controller function 'select'
+                            type: 'POST',
+                            data: {
+                                query: `SELECT * FROM ${table}`,
+                                _token: $('meta[name="csrf-token"]').attr('content') // CSRF token
+                            },
+                            success: function(response) {
+                                displayTableData(response); // Function to handle the response and display data
+                            },
+                            error: function(xhr, status, error) {
+                                console.error('Failed to fetch table data', status, error, xhr.responseText);
+                                alert('Failed to fetch table data.');
+                            }
+                        });
                     };
+
                     tableSelection.appendChild(tableDiv);
                 });
             } else {
@@ -451,6 +524,34 @@ function handleShowTablesResponse(response) {
         });
 }
 
+
+
+function displayTableData(response) {
+    if (response.success) {
+        let resultHtml = '<table border="1" cellpadding="10" cellspacing="0"><thead><tr>';
+        
+        // Create table headers from columns
+        response.columns.forEach(function(column) {
+            resultHtml += `<th>${column}</th>`;
+        });
+        resultHtml += '</tr></thead><tbody>';
+
+        // Get the number of rows from the first column's data length
+        let rowCount = response.data[response.columns[0]].length;
+        for (let i = 0; i < rowCount; i++) {
+            resultHtml += '<tr>';
+            response.columns.forEach(function(column) {
+                resultHtml += `<td>${response.data[column][i]}</td>`;
+            });
+            resultHtml += '</tr>';
+        }
+
+        resultHtml += '</tbody></table>';
+        $('#result-output').html(resultHtml); // Display the table in a specific div
+    } else {
+        alert('Error: ' + response.message);
+    }
+}
 
 
 
