@@ -45,12 +45,23 @@
         }
 
         .database-item {
-            padding: 12px;
+            /* padding: 12px;
             margin-bottom: 12px;
             border-radius: 8px;
             cursor: pointer;
             background-color: #f8f9fa;
-            transition: background-color 0.3s, transform 0.3s;
+            transition: background-color 0.3s, transform 0.3s; */
+            display: inline-block;
+    background-color: #f0f0f0;
+    border: 1px solid #ccc;
+    border-radius: 15px;
+    padding: 10px 15px;
+    margin: 5px;
+    max-width: 90%;           /* Prevent bubbles from exceeding container width */
+    word-wrap: break-word;    /* Wrap long queries */
+    font-family: monospace;   /* For code-like appearance */
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    color: #333;
         }
 
         .database-item:hover {
@@ -59,12 +70,23 @@
         }
 
         .table-item {
-            padding: 12px;
+            /* padding: 12px;
             margin-bottom: 12px;
             border-radius: 8px;
             background-color: #f8f9fa;
             cursor: pointer;
-            transition: background-color 0.3s, transform 0.3s;
+            transition: background-color 0.3s, transform 0.3s; */
+            display: inline-block;
+    background-color: #f0f0f0;
+    border: 1px solid #ccc;
+    border-radius: 15px;
+    padding: 10px 15px;
+    margin: 5px;
+    max-width: 90%;           /* Prevent bubbles from exceeding container width */
+    word-wrap: break-word;    /* Wrap long queries */
+    font-family: monospace;   /* For code-like appearance */
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    color: #333;
         }
 
         .table-item:hover {
@@ -171,13 +193,24 @@
         }
 
         .log-entry {
-            background-color: #f8f9fa;
+            /* background-color: #f8f9fa;
             padding: 12px;
             margin-bottom: 12px;
             border-radius: 8px;
             box-shadow: 0 1px 5px rgba(0, 0, 0, 0.1);
             cursor: pointer;
-            transition: background-color 0.3s, transform 0.3s;
+            transition: background-color 0.3s, transform 0.3s; */
+            display: inline-block;
+    background-color: #f0f0f0;
+    border: 1px solid #ccc;
+    border-radius: 15px;
+    padding: 10px 15px;
+    margin: 5px;
+    max-width: 90%;           /* Prevent bubbles from exceeding container width */
+    word-wrap: break-word;    /* Wrap long queries */
+    font-family: monospace;   /* For code-like appearance */
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    color: #333;
         }
 
         .log-entry:hover {
@@ -185,8 +218,8 @@
             transform: translateX(5px);
         }
         .selected-db {
-    background-color: #4CAF50; /* Green */
-    color: white;
+    background-color: #f1f8e9; /* Green */
+    
 }
 
 /* General table styling */
@@ -200,8 +233,7 @@
 
 /* Table header styling */
 #result-output table thead tr {
-    background-color: #4CAF50;
-    color: #ffffff;
+    background-color: #f1f8e9;
     text-align: left;
 }
 
@@ -232,8 +264,7 @@
 
 /* Style for selected table */
 .selected-table {
-    background-color: #28a745; /* Green color */
-    color: white; /* Text color for contrast */
+    background-color: #f1f8e9; /* Green color */
 }
 #internal-query-output{
     width:100%;
@@ -251,6 +282,51 @@
     max-height: 700px;  /* You can adjust this value to your preferred height */
     overflow-y: auto;   /* Enable scrolling if content exceeds this height */
 }
+
+
+/* Style for Array Queries */
+.query-bubble-array {
+    display: inline-block;
+    background-color: #f1f8e9;
+    border: 1px solid #ccc;
+    border-radius: 15px;
+    padding: 10px 15px;
+    margin: 5px;
+    max-width: 90%;           /* Prevent bubbles from exceeding container width */
+    word-wrap: break-word;    /* Wrap long queries */
+    font-family: monospace;   /* For code-like appearance */
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    color: #333;
+    display: flex;
+    flex-wrap: wrap;          /* Ensure bubbles wrap to the next line */
+    gap: 10px;
+}
+
+/* Style for String Query */
+.query-bubble-string {
+    background-color: #f1f8e9;
+    border: 1px solid #ccc;
+    border-radius: 15px;
+    padding: 10px 15px;
+    margin: 5px;
+    max-width: 90%;           /* Prevent bubbles from exceeding container width */
+    word-wrap: break-word;    /* Wrap long queries */
+    font-family: monospace;   /* For code-like appearance */
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    color: #333;
+}
+/* Style for the JSON output */
+.json-result {
+    background-color: #f1f8e9;
+    border: 1px solid #ccc;
+    border-radius: 15px;
+    padding: 10px 15px;
+    margin: 5px;
+    max-width: 90%;           /* Prevent bubbles from exceeding container width */
+    word-wrap: break-word;    /* Wrap long queries */
+    font-family: monospace;   /* For code-like appearance */
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    color: #333;}
 
 </style>
 
@@ -321,29 +397,29 @@
     <script>
         // Optional function to load table content (this could be implemented as needed)
         // Function to load tables for a given database
-
         function runQuery() {
-    // Récupérer la requête SQL depuis le textarea
+    // Retrieve the SQL query from the textarea
     const sqlQuery = $('#sql-query').val();
 
-    // Vérifier si le champ de requête n'est pas vide
+    // Verify the input isn't empty
     if (sqlQuery.trim() === '') {
         alert('Please enter a valid SQL query.');
         return;
     }
 
-    // Envoi de la requête SQL au backend via AJAX
+    // Send the SQL query to the backend via AJAX
     $.ajax({
-        url: '/run-query', // URL vers la route Laravel
+        url: '/run-query', // Laravel route URL
         type: 'POST',
         data: {
-            sql_query: sqlQuery, // Donnée envoyée au backend
-            _token: $('meta[name="csrf-token"]').attr('content') // Ajout du token CSRF pour la sécurité
+            sql_query: sqlQuery,
+            _token: $('meta[name="csrf-token"]').attr('content') // CSRF token for security
         },
         success: function(response) {
-            // Si la requête réussit
+            // Clear previous internal query bubbles
+            $('#internal-query-output').empty();
+
             if (response.success) {
-                // If 'USE' query is successful, highlight the database
                 if (response.selected_db) {
                     // Update UI to display selected database
                     $('#selected-db').html(`Selected Database: <strong>${response.selected_db}</strong>`);
@@ -354,8 +430,24 @@
                     // Optional: highlight the query or set focus to the query input after the USE command
                     $('#sql-query').val(`USE ${response.selected_db};`);
                 }
+                // Display internal queries as bubble elements
+                const bubbleContainer = $('#internal-query-output');
+                
+                if (response.internal_query) {
+                    // Check if internal_query is an array or a string and display accordingly
+                    if (Array.isArray(response.internal_query)) {
+                        response.internal_query.forEach(function(query) {
+                            const bubble = $('<div class="query-bubble-array"></div>').text(query);
+                            bubbleContainer.append(bubble);
+                        });
+                    } else {
+                        // If it's a string, just display it as one bubble
+                        const bubble = $('<div class="query-bubble-string"></div>').text(response.internal_query);
+            bubbleContainer.append(bubble);
+                    }
+                }
 
-                // Handle query result if it's a table (like SELECT, SHOW TABLES, etc.)
+                // Existing logic for handling table results or databases
                 if (response.columns && response.data) {
                     let resultHtml = '<table border="1" cellpadding="10" cellspacing="0"><thead><tr>';
                     
@@ -377,49 +469,21 @@
 
                     resultHtml += '</tbody></table>';
                     $('#result-output').html(resultHtml);
-                } else if (response.databases && Array.isArray(response.databases)) {
-                    // Handle databases listing (e.g., from SHOW DATABASES)
-                    let resultHtml = '<table border="1" cellpadding="10" cellspacing="0">';
-                    resultHtml += '<thead><tr>';
-
-                    // Create table headers based on the keys of the database object
-                    Object.keys(response.databases[0]).forEach(function(key) {
-                        resultHtml += `<th>${key}</th>`;
-                    });
-
-                    resultHtml += '</tr></thead><tbody>';
-
-                    // Create rows for each database entry
-                    response.databases.forEach(function(row) {
-                        resultHtml += '<tr>';
-                        Object.values(row).forEach(function(value) {
-                            resultHtml += `<td>${value}</td>`;
-                        });
-                        resultHtml += '</tr>';
-                    });
-
-                    resultHtml += '</tbody></table>';
-
-                    // Display the database table
-                    $('#result-output').html(resultHtml);
                 } else {
                     // If the result is not a table, just show the result as JSON
-                    $('#result-output').html('<pre>' + JSON.stringify(response.result, null, 2) + '</pre>');
+                    $('#result-output').html('<pre class="json-result">' + JSON.stringify(response.result, null, 2) + '</pre>');
                 }
-
-                // Display the internal query in a separate section
-                $('#internal-query-output').html('<pre>' + response.internal_query +  '</pre>');
             } else {
                 // Handle failure response
                 alert('Error: ' + response.message);
             }
         },
         error: function(xhr, status, error) {
-            // In case of an AJAX error
             alert('Failed to execute query: ' + error);
         }
     });
 }
+
 
 function highlightSelectedDb(dbName) {
     // Remove 'selected-db' class from all database items
@@ -439,6 +503,7 @@ function highlightSelectedDb(dbName) {
 
 
 function loadTables(dbId, dbName) {
+    clearResults();
     // Step 1: Send the 'USE ${dbname}' query via AJAX to the controller
     $.ajax({
         url: '/run-query', // The route to the controller method that handles the query
