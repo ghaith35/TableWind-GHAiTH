@@ -2444,6 +2444,319 @@ private function dropForeignKey($userQuery)
 // }
 
 }
+
+
+private function createTable($query)
+    {
+        // Step 1: Parse the CREATE TABLE query to extract table name and column definitions
+        if (preg_match('/CREATE\s+TABLE\s+([a-zA-Z0-9_]+)\s*\((.+)\)/is', $query, $matches)) {
+            $tableName = $matches[1];  // Extract the table name
+            $columnsDefinition = $matches[2];  // Extract the column definitions
+        
+            // Step 2: Parse the columns (including data types and constraints)
+            $columns = [];
+            $columnPattern = '/([a-zA-Z0-9_]+)\s+([a-zA0-9_]+)(?:\s+PRIMARY\s+KEY)?(?:\s+FOREIGN\s+KEY\s+REFERENCES\s+([a-zA-Z0-9_]+)\s*\(([a-zA-Z0-9_]+)\))?/i';
+            preg_match_all($columnPattern, $columnsDefinition, $columnMatches, PREG_SET_ORDER);
+        
+            foreach ($columnMatches as $columnMatch) {
+                $columns[] = [
+                    'column_name' => $columnMatch[1],
+                    'data_type' => $columnMatch[2],
+                    // 'is_primary_key' => isset($columnMatch[0]) && strpos($columnMatch[0], 'PRIMARY KEY') !== false,
+                    // 'is_foreign_key' => isset($columnMatch[0]) && strpos($columnMatch[0], 'FOREIGN KEY') !== false,
+                    'reference_table' => $columnMatch[3] ?? null,
+                    'reference_column' => $columnMatch[4] ?? null,
+                ];
+            }
+        
+            // Step 3: Ensure the database is selected
+            $dbName = session('selected_db');
+            if (!$dbName) {
+                throw new Exception('No database selected. Use the "USE" command to select a database.');
+            }
+        
+            // Get the database ID
+            $dbRecord = DB::table('General_BD_Tables')->where('db_name', $dbName)->first();
+            if (!$dbRecord) {
+                throw new Exception("Database '$dbName' does not exist.");
+            }
+            $dbId = $dbRecord->id_bd;
+        
+            // Step 4: Check if the table already exists by querying General_TABLE_Tables
+            $existingTable = DB::table('General_TABLE_Tables')->where('db_id', $dbId)->where('table_name', $tableName)->first();
+        
+            // If the table exists, use the existing table_id
+            if ($existingTable) {
+                throw new Exception("Database '$dbName' does not exist.");
+
+            } else {
+                // Step 5: Prepare the SQL to insert the table into General_TABLE_Tables
+                $tableInsertQuery = "INSERT INTO General_TABLE_Tables (db_id, table_name, timestamp_insert) VALUES (?, ?, NOW())";
+                DB::insert($tableInsertQuery, [$dbId, $tableName]);
+                $tableId = DB::getPdo()->lastInsertId();  // Get the last inserted table_id
+            }
+        
+            // Prepare SQL queries and bindings
+            $sqlQueries = [];
+            $bindings = [];
+        
+            // Step 6: Combine the SQL for inserting columns into General_ATTRIBUTE_Tables and handling constraints
+            foreach ($columns as $column) {
+                // Step 6.1: Prepare column insert query, is_primary_key, is_foreign_key,
+                $attributeInsertQuery = "INSERT INTO General_ATTRIBUTE_Tables (table_id, attribute_name, data_type ,timestamp_insert) VALUES (?, ?, ?, NOW())";
+                $sqlQueries[] = $attributeInsertQuery;
+                $bindings[] = [
+                    $tableId, // Using the existing or newly inserted table_id
+                    $column['column_name'],
+                    $column['data_type'],
+                    // $column['is_primary_key'] ? 1 : 0,
+                    // $column['is_foreign_key'] ? 1 : 0
+                ];
+        
+                // Step 6.2: Handle primary key constraint (if present)
+                // if ($column['is_primary_key']) {
+                //     $primaryKeyInsertQuery = "INSERT INTO General_PKEY_Tables (table_id, attribute_id, constraint_name, timestamp_insert) VALUES (?, ?, ?, NOW())";
+                //     $sqlQueries[] = $primaryKeyInsertQuery;
+                //     $bindings[] = [
+                //         $tableId, // Using the existing or newly inserted table_id
+                //         ':attribute_id', // Placeholder for actual attribute ID (we will replace it later)
+                //         'PK_' . $tableName . '_' . $column['column_name']
+                //     ];
+                // }
+        
+                // Step 6.3: Handle foreign key constraint (if present)
+                // if ($column['is_foreign_key']) {
+                //     $referenceTableId = DB::table('General_TABLE_Tables')->where('table_name', $column['reference_table'])->value('table_id');
+                //     $referenceAttributeId = DB::table('General_ATTRIBUTE_Tables')->where('table_id', $referenceTableId)->where('attribute_name', $column['reference_column'])->value('attribute_id');
+        
+                //     $foreignKeyInsertQuery = "INSERT INTO General_FKEY_Tables (table_id, attribute_id, reference_table_id, reference_attribute_id, constraint_name, timestamp_insert) VALUES (?, ?, ?, ?, ?, NOW())";
+                //     $sqlQueries[] = $foreignKeyInsertQuery;
+                //     $bindings[] = [
+                //         $tableId, // Using the existing or newly inserted table_id
+                //         ':attribute_id', // Placeholder for actual attribute ID (we will replace it later)
+                //         $referenceTableId,
+                //         $referenceAttributeId,
+                //         'FK_' . $tableName . '_' . $column['column_name']
+                //     ];
+                // }
+            }
+        
+            // Combine all queries into a single transaction
+            return [
+                'sql' => $sqlQueries, // Combined SQL queries
+                'bindings' => $bindings  // Combined bindings for each query
+            ];
+        }
+    
+        throw new Exception('Invalid CREATE TABLE query.');
+    }
+}
+function loadTables(dbId, dbName) {
+    clearResults();
+    // Step 1: Send the 'USE ${dbname}' query via AJAX to the controller
+    $.ajax({
+        url: '/run-query', // The route to the controller method that handles the query
+        type: 'POST',
+        data: {
+            sql_query: 'USE ${dbName};', // The SQL query to use the selected database
+            _token: $('meta[name="csrf-token"]').attr('content') // CSRF token for security
+        },
+        success: function(response) {
+            // Handle the response from the 'USE' query (if needed)
+            if (response.success) {
+                console.log('Database changed to: ' + dbName);
+
+                // Update the internal query output
+                const internalQueryOutput = $('#internal-query-output');
+                internalQueryOutput.empty(); // Clear previous content
+                const bubble = $('<div class="query-bubble-string"></div>').text(SELECT id_bd FROM General_BD_Tables WHERE db_name = '${dbName}' ;);
+                internalQueryOutput.append(bubble); // Add the new query bubble
+
+                // Ensure the internal query section is visible
+                internalQueryOutput.show();
+
+            } else {
+                alert('Failed to switch database: ' + response.message);
+            }
+        },
+        error: function(xhr, status, error) {
+            alert('Error while switching database: ' + error);
+        }
+    });
+
+    // Step 2: Set the SQL query in the textarea for showing tables
+    document.getElementById('sql-query').value = USE ${dbName};\nSHOW TABLES;;
+
+    // Step 3: Remove 'selected-db' class from all database items
+    document.querySelectorAll('.database-item').forEach(item => {
+        item.classList.remove('selected-db');
+    });
+
+    // Step 4: Add 'selected-db' class to the clicked database item
+    const clickedItem = event.currentTarget;
+    clickedItem.classList.add('selected-db');
+
+    // Step 5: Fetch tables from the server for the selected database
+    $.get('/tables/' + dbId)
+        .done(function(data) {
+            const tableSelection = document.getElementById('table-selection');
+            tableSelection.innerHTML = '';
+
+            if (data.tables && data.tables.length > 0) {
+                data.tables.forEach(function(table) {
+                    const tableDiv = document.createElement('div');
+                    tableDiv.classList.add('table-item');
+                    tableDiv.innerText = table;
+
+                    // Add click event listener to highlight the selected table
+                    tableDiv.onclick = function () {
+                        // Remove 'selected-table' class from all table items
+                        document.querySelectorAll('.table-item').forEach(item => {
+                            item.classList.remove('selected-table');
+                        });
+
+                        // Add 'selected-table' class to the clicked table item
+                        this.classList.add('selected-table');
+
+                        // Send AJAX request when tableDiv is clicked
+                        $.ajax({
+                            url: '/select', // Route to Laravel controller function 'select'
+                            type: 'POST',
+                            data: {
+                                query: SELECT * FROM ${table},
+                                _token: $('meta[name="csrf-token"]').attr('content') // CSRF token
+                            },
+                            success: function(response) {
+                                
+                                displayTableData(response); // Function to handle the response and display data
+
+                                 // Update the internal query output
+                                const internalQueryOutput = $('#internal-query-output');
+                                internalQueryOutput.empty(); // Clear previous content
+                                const bubble = $('<div class="query-bubble-string"></div>').text(`
+                                SELECT
+                                        attr.attribute_name ,
+                                        val.attribute_values 
+                                    FROM
+                                        General_VALUE_Tables val
+                                    JOIN
+                                        General_ATTRIBUTE_Tables attr ON val.id_attr = attr.attribute_id
+                                    JOIN
+                                        General_TABLE_Tables tab ON attr.table_id = tab.table_id
+                                    JOIN
+                                        General_BD_Tables db ON tab.db_id = db.id_bd
+                                    WHERE
+                                        db.db_name = '${dbName}'
+                                        AND tab.table_name = '${table}'
+                                    GROUP BY val.value_id;`);
+                                internalQueryOutput.append(bubble); // Add the new query bubble
+
+                                // Ensure the internal query section is visible
+                                internalQueryOutput.show();
+                            },
+                            error: function(xhr, status, error) {
+                                console.error('Failed to fetch table data', status, error, xhr.responseText);
+                                alert('Failed to fetch table data.');
+                            }
+                        });
+                    };
+
+                    tableSelection.appendChild(tableDiv);
+                });
+            } else {
+                tableSelection.innerHTML = 'No tables found for this database.';
+            }
+        })
+        .fail(function(xhr, status, error) {
+            console.error('AJAX Request Failed', status, error, xhr.responseText);
+            alert('Failed to load tables. Check the console for more details.');
+        });
 }
 
+function loadTables(dbId, dbName) {
+    clearResults();
+    // Step 1: Send the 'USE ${dbname}' query via AJAX to the controller
+    $.ajax({
+        url: '/run-query', // The route to the controller method that handles the query
+        type: 'POST',
+        data: {
+            sql_query: `USE ${dbName};`, // The SQL query to use the selected database
+            _token: $('meta[name="csrf-token"]').attr('content') // CSRF token for security
+        },
+        success: function(response) {
+            // Handle the response from the 'USE' query (if needed)
+            if (response.success) {
+                console.log('Database changed to: ' + dbName);
+            } else {
+                alert('Failed to switch database: ' + response.message);
+            }
+        },
+        error: function(xhr, status, error) {
+            alert('Error while switching database: ' + error);
+        }
+    });
 
+    // Step 2: Set the SQL query in the textarea for showing tables
+    document.getElementById('sql-query').value = `USE ${dbName};\nSHOW TABLES;`;
+
+    // Step 3: Remove 'selected-db' class from all database items
+    document.querySelectorAll('.database-item').forEach(item => {
+        item.classList.remove('selected-db');
+    });
+
+    // Step 4: Add 'selected-db' class to the clicked database item
+    const clickedItem = event.currentTarget;
+    clickedItem.classList.add('selected-db');
+
+    // Step 5: Fetch tables from the server for the selected database
+    $.get('/tables/' + dbId)
+        .done(function(data) {
+            const tableSelection = document.getElementById('table-selection');
+            tableSelection.innerHTML = '';
+
+            if (data.tables && data.tables.length > 0) {
+                data.tables.forEach(function(table) {
+                    const tableDiv = document.createElement('div');
+                    tableDiv.classList.add('table-item');
+                    tableDiv.innerText = table;
+
+                    // Add click event listener to highlight the selected table
+                    tableDiv.onclick = function () {
+                        // Remove 'selected-table' class from all table items
+                        document.querySelectorAll('.table-item').forEach(item => {
+                            item.classList.remove('selected-table');
+                        });
+
+                        // Add 'selected-table' class to the clicked table item
+                        this.classList.add('selected-table');
+
+                        // Send AJAX request when tableDiv is clicked
+                        $.ajax({
+                            url: '/select', // Route to Laravel controller function 'select'
+                            type: 'POST',
+                            data: {
+                                query: `SELECT * FROM ${table}`,
+                                _token: $('meta[name="csrf-token"]').attr('content') // CSRF token
+                            },
+                            success: function(response) {
+                                displayTableData(response); // Function to handle the response and display data
+                            },
+                            error: function(xhr, status, error) {
+                                console.error('Failed to fetch table data', status, error, xhr.responseText);
+                                alert('Failed to fetch table data.');
+                            }
+                        });
+                    };
+
+                    tableSelection.appendChild(tableDiv);
+                });
+            } else {
+                tableSelection.innerHTML = 'No tables found for this database.';
+            }
+        })
+        .fail(function(xhr, status, error) {
+            console.error('AJAX Request Failed', status, error, xhr.responseText);
+            alert('Failed to load tables. Check the console for more details.');
+        });
+}
+}

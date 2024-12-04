@@ -48,7 +48,7 @@
             /* padding: 12px;
             margin-bottom: 12px;
             border-radius: 8px;
-            cursor: pointer;
+            
             background-color: #f8f9fa;
             transition: background-color 0.3s, transform 0.3s; */
             display: inline-block;
@@ -62,10 +62,15 @@
     font-family: monospace;   /* For code-like appearance */
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
     color: #333;
+    cursor: pointer;
+    display: flex;           /* Use flexbox for horizontal layout */
+    flex-wrap: wrap;         /* Allows items to wrap to the next line if necessary */
+    gap: 10px;               /* Adds space between items */
+    justify-content: flex-start;
         }
 
         .database-item:hover {
-            background-color: #e9ecef;
+            background-color: #f1f8e9;
             transform: translateX(10px);
         }
 
@@ -87,10 +92,15 @@
     font-family: monospace;   /* For code-like appearance */
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
     color: #333;
+    cursor: pointer;
+    display: flex;           /* Use flexbox for horizontal layout */
+    flex-wrap: wrap;         /* Allows items to wrap to the next line if necessary */
+    gap: 10px;               /* Adds space between items */
+    justify-content: flex-start;
         }
 
         .table-item:hover {
-            background-color: #e9ecef;
+            background-color: #f1f8e9;
             transform: translateX(10px);
         }
 
@@ -193,14 +203,7 @@
         }
 
         .log-entry {
-            /* background-color: #f8f9fa;
-            padding: 12px;
-            margin-bottom: 12px;
-            border-radius: 8px;
-            box-shadow: 0 1px 5px rgba(0, 0, 0, 0.1);
-            cursor: pointer;
-            transition: background-color 0.3s, transform 0.3s; */
-            display: inline-block;
+           display: inline-block;
     background-color: #f0f0f0;
     border: 1px solid #ccc;
     border-radius: 15px;
@@ -211,6 +214,11 @@
     font-family: monospace;   /* For code-like appearance */
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
     color: #333;
+    cursor: pointer;
+    display: flex;           /* Use flexbox for horizontal layout */
+    flex-wrap: wrap;         /* Allows items to wrap to the next line if necessary */
+    gap: 20px;               /* Adds space between items */
+    justify-content: flex-start;
         }
 
         .log-entry:hover {
@@ -221,43 +229,51 @@
     background-color: #f1f8e9; /* Green */
     
 }
-
+/* General table styling */
 /* General table styling */
 #result-output table {
     width: 100%;
     border-collapse: collapse;
-    margin: 20px 0;
-    font-size: 16px;
+    margin: 10px 0; /* Reduced margin for a more compact display */
+    font-size: 14px; /* Smaller font size for a more compact look */
     text-align: left;
+    background-color: #ffffff; /* White background for a clean look */
+    border-radius: 6px; /* Slightly rounded corners for a softer look */
+    overflow: hidden; /* Ensures rounded corners on tables with borders */
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); /* Subtle shadow for a lifted effect */
 }
 
 /* Table header styling */
 #result-output table thead tr {
-    background-color: #f1f8e9;
+    background-color: #f1f8e9; /* Light green header for a modern look */
+    color: #333; /* Dark text for contrast */
+    word-wrap: break-word; /* Wrap long queries */
+    font-family: monospace; /* Monospace font for code-like appearance */
     text-align: left;
 }
 
-/* Table header and cell borders */
+/* Remove borders between columns and rows */
 #result-output table th,
 #result-output table td {
-    padding: 12px 15px;
-    border: 1px solid #dddddd;
+    padding: 10px 12px; /* Reduced padding for smaller cells */
+    vertical-align: middle; /* Ensure proper alignment */
 }
 
 /* Alternate row background color */
 #result-output table tbody tr:nth-child(even) {
-    background-color: #f3f3f3;
+    background-color: #f9f9f9; /* Light gray for alternate rows */
 }
 
 /* Hover effect for rows */
 #result-output table tbody tr:hover {
-    background-color: #f1f1f1;
+    background-color: #e3f2fd; /* Light blue hover effect for rows */
+    cursor: pointer;
 }
 
-/* Optional: Add a box-shadow for a lifted effect */
-#result-output table {
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-}
+
+
+
+
 
 /* Style for selected database indicator */
 
@@ -430,6 +446,20 @@
                     // Optional: highlight the query or set focus to the query input after the USE command
                     $('#sql-query').val(`USE ${response.selected_db};`);
                 }
+                if (response.tablename) {
+                    // Update UI to display selected database
+                    $('#selected-table').html(` <strong>${response.tablename}</strong>`);
+
+                    // Highlight the selected database in the sidebar
+                    highlightSelectedtable(response.tablename);
+
+                    // Optional: highlight the query or set focus to the query input after the USE command
+                    // $('#sql-query').val(`USE ${response.tablename};`);
+                }
+                if (response.db_id) {
+                    // Update UI to display selected database
+                    loadTables2(response.db_id, response.dbname);
+                }
                 // Display internal queries as bubble elements
                 const bubbleContainer = $('#internal-query-output');
                 
@@ -498,12 +528,93 @@ function highlightSelectedDb(dbName) {
         }
     });
 }
+function highlightSelectedtable(tablename) {
+    // Remove 'selected-db' class from all database items
+    document.querySelectorAll('.table-item').forEach(item => {
+        item.classList.remove('selected-table');
+    });
 
+    // Loop through all database items to find a match
+    document.querySelectorAll('.table-item').forEach(item => {
+        if (item.textContent.trim() === tablename.trim()) {
+            item.classList.add('selected-table');
+        }
+    });
+}
+
+function loadTables2(dbId, dbName) {
+    // Clear previous results
+    // clearResults();
+
+    // // Update internal query output to show the SELECT and SHOW TABLES queries
+    // const internalQueryOutput = $('#internal-query-output');
+    // internalQueryOutput.empty(); // Clear previous content
+    // const showTablesQueryBubble = $('<div class="query-bubble-string"></div>')
+    //     .text(`SELECT table_name FROM General_TABLE_Tables WHERE db_id = ${dbId};`);
+    // internalQueryOutput.append(showTablesQueryBubble);
+
+    // Fetch tables for the selected database
+    $.get('/tables/' + dbId)
+        .done(function(data) {
+            const tableSelection = document.getElementById('table-selection');
+            tableSelection.innerHTML = '';
+
+            if (data.tables && data.tables.length > 0) {
+                data.tables.forEach(function(table) {
+                    const tableDiv = document.createElement('div');
+                    tableDiv.classList.add('table-item');
+                    tableDiv.innerText = table;
+
+                    // Add click event listener to highlight the selected table
+                    tableDiv.onclick = function () {
+                        // Highlight the selected table
+                        document.querySelectorAll('.table-item').forEach(item => {
+                            item.classList.remove('selected-table');
+                        });
+                        this.classList.add('selected-table');
+
+                        // Fetch and display the table data
+                        $.ajax({
+                            url: '/select', // Your route for selecting the table
+                            type: 'POST',
+                            data: {
+                                query: `SELECT * FROM ${table}`,
+                                _token: $('meta[name="csrf-token"]').attr('content') // CSRF token
+                            },
+                            success: function(response) {
+                                displayTableData(response); // Function to handle the response and display data
+
+                                // Show internal query for the selected table
+                                // internalQueryOutput.empty(); // Clear previous content
+                                // const internalQueryBubble = $('<div class="query-bubble-string"></div>').text(`
+                                //     SELECT * FROM ${table};
+                                // `);
+                                // internalQueryOutput.append(internalQueryBubble);
+                                // internalQueryOutput.show();
+                            },
+                            error: function(xhr, status, error) {
+                                console.error('Failed to fetch table data', status, error, xhr.responseText);
+                                alert('Failed to fetch table data.');
+                            }
+                        });
+                    };
+
+                    tableSelection.appendChild(tableDiv);
+                });
+            } else {
+                tableSelection.innerHTML = 'No tables found for this database.';
+            }
+        })
+        .fail(function(xhr, status, error) {
+            console.error('AJAX Request Failed', status, error, xhr.responseText);
+            alert('Failed to load tables. Check the console for more details.');
+        });
+}
 
 
 
 function loadTables(dbId, dbName) {
-    clearResults();
+    // clearResults();
     // Step 1: Send the 'USE ${dbname}' query via AJAX to the controller
     $.ajax({
         url: '/run-query', // The route to the controller method that handles the query
@@ -513,9 +624,27 @@ function loadTables(dbId, dbName) {
             _token: $('meta[name="csrf-token"]').attr('content') // CSRF token for security
         },
         success: function(response) {
+                          // const bubbleContainer = $('#internal-query-output');
+
             // Handle the response from the 'USE' query (if needed)
             if (response.success) {
                 console.log('Database changed to: ' + dbName);
+                //$('#internal-query-output').empty();
+                const internalQueryOutput = $('#internal-query-output');
+                internalQueryOutput.empty(); // Clear previous content
+                const bubble = $('<div class="query-bubble-string"></div>').text(`
+                    SELECT id_bd FROM General_BD_Tables WHERE db_name = '${dbName}';`);
+                internalQueryOutput.append(bubble); // Add the new query bubble
+                const bubble3 = $('<div class="query-bubble-string"></div>').text(`
+                    SELECT table_name FROM General_TABLE_Tables WHERE db_id  = (SELECT id_bd FROM General_BD_Tables WHERE db_name = '${dbName}';`);
+                internalQueryOutput.append(bubble3); // Add the new query bubble
+                const internalresutOutput = $('#result-output');
+                internalresutOutput.empty(); // Clear previous content
+                const bubble1 = $('<div class="query-bubble-string"></div>').text(`
+                "database selected"`);
+                internalresutOutput.append(bubble1);
+                // Ensure the internal query section is visible
+                internalresutOutput.show();
             } else {
                 alert('Failed to switch database: ' + response.message);
             }
@@ -526,7 +655,7 @@ function loadTables(dbId, dbName) {
     });
 
     // Step 2: Set the SQL query in the textarea for showing tables
-    document.getElementById('sql-query').value = `USE ${dbName};\nSHOW TABLES;`;
+    //document.getElementById('sql-query').value = `USE ${dbName};\nSHOW TABLES;`;
 
     // Step 3: Remove 'selected-db' class from all database items
     document.querySelectorAll('.database-item').forEach(item => {
@@ -569,6 +698,28 @@ function loadTables(dbId, dbName) {
                             },
                             success: function(response) {
                                 displayTableData(response); // Function to handle the response and display data
+                                const internalQueryOutput = $('#internal-query-output');
+                                internalQueryOutput.empty(); // Clear previous content
+                                const bubble = $('<div class="query-bubble-string"></div>').text(`
+                                SELECT
+                                        attr.attribute_name ,
+                                        val.attribute_values 
+                                    FROM
+                                        General_VALUE_Tables val
+                                    JOIN
+                                        General_ATTRIBUTE_Tables attr ON val.id_attr = attr.attribute_id
+                                    JOIN
+                                        General_TABLE_Tables tab ON attr.table_id = tab.table_id
+                                    JOIN
+                                        General_BD_Tables db ON tab.db_id = db.id_bd
+                                    WHERE
+                                        db.db_name = '${dbName}'
+                                        AND tab.table_name = '${table}'
+                                    GROUP BY val.value_id;`);
+                                internalQueryOutput.append(bubble); // Add the new query bubble
+
+                                // Ensure the internal query section is visible
+                                internalQueryOutput.show();
                             },
                             error: function(xhr, status, error) {
                                 console.error('Failed to fetch table data', status, error, xhr.responseText);
@@ -632,6 +783,8 @@ function displayTableData(response) {
             // Clear the results displayed in the result-output div
             document.getElementById('result-output').innerText = '';
             document.getElementById('sql-query').value = ''; // Optionally clear the query input as well
+            document.getElementById('internal-query-output').innerText = ''; // Optionally clear the query input as well
+
         }
         // Assuming you have a div with a specific class for each database
 

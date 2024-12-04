@@ -115,7 +115,7 @@ function bindSqlWithBindings($sql, $bindings) {
                 if (preg_match('/USE\s+([a-zA-Z0-9_]+)/i', $userQuery, $matches)) {
                     $dbName = $matches[1];
                     session(['selected_db' => $dbName]);
-                    $sql = 'SELECT id_bd FROM  General_BD_Tables WHERE db_name = ?';
+                    $sql = 'SELECT id_bd FROM  General_BD_Tables WHERE db_name = ?;';
                     $bindings = [$dbName];
 
                 // Replace '?' with binding values
@@ -152,35 +152,7 @@ function bindSqlWithBindings($sql, $bindings) {
                             'internal_query' => $finalQuery
                         ]);
                     }
-            // }
-            // // Handle 'SHOW TABLES' queries
-            // elseif ($queryType == 'SHOW_TABLES') {
-            //     $dbName = session('selected_db');
-                
-            //     if ($dbName) {
-            //         $dbRecord = DB::table('general_bd_tables')
-            //                       ->where('db_name', $dbName)
-            //                       ->first();
-    
-            //         if ($dbRecord) {
-            //             $tablesResponse = $this->getTables($dbRecord->id_bd);
-    
-            //             if ($tablesResponse->getStatusCode() == 200) {
-            //                 $tables = json_decode($tablesResponse->getContent(), true)['tables'];
-            //                 return response()->json([
-            //                     'success' => true,
-            //                     'db_name' => $dbName,
-            //                     'db_id' => $dbRecord->id_bd,
-            //                     'tables' => $tables
-            //                 ]);
-            //             }
-            //             return $tablesResponse;
-            //         } else {
-            //             return response()->json(['success' => false, 'error' => 'Database not found.']);
-            //         }
-            //     } else {
-            //         return response()->json(['success' => false, 'error' => 'No database selected.']);
-            //     }
+
             elseif ($queryType == 'MODIFY_TABLE') {
                 $dbName = session('selected_db');
                 if (!$dbName) {
@@ -230,13 +202,14 @@ function bindSqlWithBindings($sql, $bindings) {
             
                     // Bind the query with the parameters (this will not execute the query, just bind the values)
                     $sqlWithBindings = vsprintf(str_replace('?', '%s', $result['internal_query']), $result['bindings']);
-            
+            $tablename=$result['tablename']; 
                     // Return the prepared query as a JSON response
                     return response()->json([
                         'success' => true,
                         'columns' => $result['columns'],
                         'data' => $result['data'],
                         'internal_query' => $sqlWithBindings,  // Return the internal query with the values bound
+                        'tablename'=>$tablename,
                     ]);
                 } catch (\Exception $e) {
                     // Handle any exceptions
@@ -318,33 +291,34 @@ function bindSqlWithBindings($sql, $bindings) {
                 }
             }elseif ($queryType == 'CREATE_TABLE') {
                 $createResult = $this->createTable($userQuery);
-            
-                // Start a database transaction
-                DB::beginTransaction();
-            
+                
                 try {
-                    // Execute each SQL query individually
-                    foreach ($createResult['sql'] as $index => $sql) {
-                        DB::statement($sql, $createResult['bindings'][$index]);
+                    // Start a transaction for the first query
+                    DB::beginTransaction();
+            
+                    // Execute the first SQL query with its binding
+                    DB::statement($createResult['sql'][0], $createResult['bindings'][0]);
+                    
+                    // Commit the transaction for the first query
+                    DB::commit();
+                    
+                    // Begin a new transaction for the remaining queries
+                    DB::beginTransaction();
+                    
+                    // Execute the remaining queries
+                    for ($i = 1; $i < count($createResult['sql']); $i++) {
+                        DB::statement($createResult['sql'][$i], $createResult['bindings'][$i]);
                     }
             
-                    // Commit the transaction
+                    // Commit the transaction for the remaining queries
                     DB::commit();
             
                     // Prepare the final query output with placeholders replaced by actual values
                     $finalQueries = [];
                     foreach ($createResult['sql'] as $index => $sql) {
                         $bindings = $createResult['bindings'][$index];
-                        // Replace the placeholders with the binding values
                         foreach ($bindings as $key => $value) {
-                            // Check if the value is a number or a string
-                            if (is_numeric($value)) {
-                                // No need to quote numeric values
-                                $sql = preg_replace('/\?/', $value, $sql, 1);
-                            } else {
-                                // Quote string values
-                                $sql = preg_replace('/\?/', "'" . addslashes($value) . "'", $sql, 1);
-                            }
+                            $sql = preg_replace('/\?/', is_numeric($value) ? $value : "'" . addslashes($value) . "'", $sql, 1);
                         }
                         $finalQueries[] = $sql;
                     }
@@ -355,6 +329,7 @@ function bindSqlWithBindings($sql, $bindings) {
                         'result' => 'Table created successfully.',
                         'internal_query' => $finalQueries  // Return the final queries with bindings replaced
                     ]);
+            
                 } catch (\Exception $e) {
                     // Rollback the transaction if any query fails
                     DB::rollBack();
@@ -773,6 +748,35 @@ function bindSqlWithBindings($sql, $bindings) {
                     'result' => 'Attribute name modified successfully.',
                     'internal_query' => $internalQuery, // Return the query with bound values
                 ]);
+            }elseif ($queryType == 'SHOW_TABLES') {
+                $dbName = session('selected_db');
+                if (!$dbName) {
+                    throw new \Exception('No database selected.');
+                }
+            
+                $alterResult = $this->showTables($userQuery);
+            
+                // Bind the query and values directly
+                $internalQuery = $alterResult['sql']; // The SQL query with placeholders
+                $bindings = $alterResult['bindings']; // The values to be bound to the query
+                $dbname = $alterResult['dbname']; 
+                $db_id=$alterResult['db_id']; 
+                // Use the bindings to replace placeholders in the SQL query for debugging purposes
+                foreach ($bindings as $binding) {
+                    $internalQuery = preg_replace('/\?/', "'$binding'", $internalQuery, 1);
+                }
+            
+                // Execute the update query
+                //DB::update($alterResult['sql'], $alterResult['bindings']);
+            
+                // Return the internal query with values and the bindings to the JSON response
+                return response()->json([
+                    'success' => true,
+                    'result' => 'tables showed successfully.',
+                    'internal_query' => $internalQuery, // Return the query with bound values
+                    'dbname'=>$dbname,
+                    'db_id'=>$db_id,
+                ]);
             }else{
                 $internalQuery = $this->generateInternalQuery($queryType, $userQuery);
                 $result = DB::statement($internalQuery['sql'], $internalQuery['bindings']);
@@ -784,7 +788,8 @@ function bindSqlWithBindings($sql, $bindings) {
                     'message' => 'Query executed successfully.',
                     'databases' => $databases,
                     'result' => $result ?? null,
-                    'internal_query'=> 'ghaith'
+                    'internal_query'=> 'hh
+                    '
                 ]);
             }
         } catch (\Exception $e) {
@@ -836,12 +841,13 @@ function bindSqlWithBindings($sql, $bindings) {
             return 'ADD_PRIMARY_KEY';
         } elseif (preg_match('/ALTER\s+TABLE\s+(\w+)\s+ADD\s+CONSTRAINT\s+(\w+)\s+FOREIGN\s+KEY\s*\((\w+)\)\s+REFERENCES\s+(\w+)\s*\((\w+)\)/i', $query)) {
             return 'ADD_FOREIGN_KEY';
-        } elseif (preg_match('/ALTER\s+TABLE\s+(\w+)\s+DROP\s+PRIMARY\s+KEY(\s+IF\s+EXISTS\s+(\w+))?/i', $query)) {
+        } elseif (preg_match($pattern = '/^\s*ALTER\s+TABLE\s+(\w+)\s+DROP\s+PRIMARY\s+KEY\s+(\w+)\s*;?$/i', $query)) {
             return 'DROP_PRIMARY_KEY';
         } elseif (preg_match('/ALTER\s+TABLE\s+(\w+)\s+DROP\s+FOREIGN\s+KEY\s+(\w+);?/i', $query)) {
             return 'DROP_FOREIGN_KEY';
         }elseif (preg_match('/ALTER\s+TABLE\s+([a-zA-Z0-9_]+)\s+RENAME\s+COLUMN\s+([a-zA-Z0-9_]+)\s+TO\s+([a-zA-Z0-9_]+)/i', $query)) {
-            return 'MODIFY_COLUMN_NAME';}
+            return 'MODIFY_COLUMN_NAME';
+        }
     
         throw new Exception('Unsupported query type.');
     }
@@ -890,6 +896,8 @@ function bindSqlWithBindings($sql, $bindings) {
                     return $this->selectTableContent($query);
                 case 'MODIFY_COLUMN_NAME':
                     return $this->modifyColumName($query);
+                    case 'SHOW_TABLES':
+                        return $this->showTables($query);
                 default:
                     return response()->json(['success' => false, 'message' => 'Unsupported query type.'], 400);
             }
@@ -957,7 +965,22 @@ function bindSqlWithBindings($sql, $bindings) {
         }
         throw new Exception('Invalid ALTER DATABASE query.');
     }
-
+    private function showTables($query)
+    {
+        // Match 'SHOW TABLES' query using a regular expression
+        if (preg_match('/^\s*SHOW\s+TABLES\s*;?\s*$/i', $query)) {
+            $dbName = session('selected_db');
+            $dbRecord = DB::table('General_BD_Tables')->where('db_name', $dbName)->first();
+            $db_id= $dbRecord->id_bd;
+            return [
+                'sql' => 'SELECT table_name FROM General_TABLE_Tables WHERE db_id  = (SELECT id_bd FROM General_BD_Tables WHERE db_name = ?);',
+                'bindings' => [$dbName], // No bindings needed
+                'dbname'=>$dbName,
+                'db_id'=>$db_id
+            ];
+        }
+        throw new Exception('Invalid SHOW TABLES query.');
+    }
     private function dropDatabase($query)
     {
         // Extract the database name from the DROP DATABASE query
@@ -1004,105 +1027,74 @@ function bindSqlWithBindings($sql, $bindings) {
     {
         // Step 1: Parse the CREATE TABLE query to extract table name and column definitions
         if (preg_match('/CREATE\s+TABLE\s+([a-zA-Z0-9_]+)\s*\((.+)\)/is', $query, $matches)) {
-            $tableName = $matches[1];  // Extract the table name
-            $columnsDefinition = $matches[2];  // Extract the column definitions
-        
-            // Step 2: Parse the columns (including data types and constraints)
+            $tableName = $matches[1];
+            $columnsDefinition = $matches[2];
+            
+            // Step 2: Parse the columns
             $columns = [];
-            $columnPattern = '/([a-zA-Z0-9_]+)\s+([a-zA0-9_]+)(?:\s+PRIMARY\s+KEY)?(?:\s+FOREIGN\s+KEY\s+REFERENCES\s+([a-zA-Z0-9_]+)\s*\(([a-zA-Z0-9_]+)\))?/i';
+            $columnPattern = '/([a-zA-Z0-9_]+)\s+([a-zA-Z0-9_]+)(?:\s+(PRIMARY\s+KEY))?(?:\s+REFERENCES\s+([a-zA-Z0-9_]+)\s*\(([a-zA-Z0-9_]+)\))?/i';
             preg_match_all($columnPattern, $columnsDefinition, $columnMatches, PREG_SET_ORDER);
-        
+            
             foreach ($columnMatches as $columnMatch) {
                 $columns[] = [
                     'column_name' => $columnMatch[1],
                     'data_type' => $columnMatch[2],
-                    'is_primary_key' => isset($columnMatch[0]) && strpos($columnMatch[0], 'PRIMARY KEY') !== false,
-                    'is_foreign_key' => isset($columnMatch[0]) && strpos($columnMatch[0], 'FOREIGN KEY') !== false,
-                    'reference_table' => $columnMatch[3] ?? null,
-                    'reference_column' => $columnMatch[4] ?? null,
+                    'is_primary_key' => !empty($columnMatch[3]),
+                    'reference_table' => $columnMatch[4] ?? null,
+                    'reference_column' => $columnMatch[5] ?? null,
                 ];
             }
-        
+    
             // Step 3: Ensure the database is selected
             $dbName = session('selected_db');
             if (!$dbName) {
                 throw new Exception('No database selected. Use the "USE" command to select a database.');
             }
-        
+    
             // Get the database ID
             $dbRecord = DB::table('General_BD_Tables')->where('db_name', $dbName)->first();
             if (!$dbRecord) {
                 throw new Exception("Database '$dbName' does not exist.");
             }
             $dbId = $dbRecord->id_bd;
-        
-            // Step 4: Check if the table already exists by querying General_TABLE_Tables
             $existingTable = DB::table('General_TABLE_Tables')->where('db_id', $dbId)->where('table_name', $tableName)->first();
         
             // If the table exists, use the existing table_id
             if ($existingTable) {
-                $tableId = $existingTable->table_id;
-            } else {
-                // Step 5: Prepare the SQL to insert the table into General_TABLE_Tables
-                $tableInsertQuery = "INSERT INTO General_TABLE_Tables (db_id, table_name, timestamp_insert) VALUES (?, ?, NOW())";
-                DB::insert($tableInsertQuery, [$dbId, $tableName]);
-                $tableId = DB::getPdo()->lastInsertId();  // Get the last inserted table_id
-            }
-        
-            // Prepare SQL queries and bindings
+                throw new Exception("table '$tableName' already exist.");
+
+            } 
+            // Prepare SQL and bindings arrays
             $sqlQueries = [];
             $bindings = [];
-        
-            // Step 6: Combine the SQL for inserting columns into General_ATTRIBUTE_Tables and handling constraints
+            $TableId = DB::table('General_TABLE_Tables')->max('table_id') + 1;
+
+            // Step 4: Prepare table insertion query
+            $tableInsertQuery = "INSERT INTO General_TABLE_Tables (db_id, table_name, timestamp_insert) VALUES ((select id_bd from General_BD_Tables where db_name = ?) , ?, NOW())";
+            $sqlQueries[] = $tableInsertQuery;
+            $bindings[] = [$dbName, $tableName];
+    
+            // Step 5: Prepare column insert queries and constraint handling
             foreach ($columns as $column) {
-                // Step 6.1: Prepare column insert query
-                $attributeInsertQuery = "INSERT INTO General_ATTRIBUTE_Tables (table_id, attribute_name, data_type, is_primary_key, is_foreign_key, timestamp_insert) VALUES (?, ?, ?, ?, ?, NOW())";
+                $attributeInsertQuery = "INSERT INTO General_ATTRIBUTE_Tables (table_id, attribute_name, data_type, timestamp_insert) VALUES (?, ?, ?, NOW())";
                 $sqlQueries[] = $attributeInsertQuery;
                 $bindings[] = [
-                    $tableId, // Using the existing or newly inserted table_id
+                    $TableId, // Placeholder to be replaced dynamically later
                     $column['column_name'],
-                    $column['data_type'],
-                    $column['is_primary_key'] ? 1 : 0,
-                    $column['is_foreign_key'] ? 1 : 0
+                    $column['data_type']
                 ];
-        
-                // Step 6.2: Handle primary key constraint (if present)
-                if ($column['is_primary_key']) {
-                    $primaryKeyInsertQuery = "INSERT INTO General_PKEY_Tables (table_id, attribute_id, constraint_name, timestamp_insert) VALUES (?, ?, ?, NOW())";
-                    $sqlQueries[] = $primaryKeyInsertQuery;
-                    $bindings[] = [
-                        $tableId, // Using the existing or newly inserted table_id
-                        ':attribute_id', // Placeholder for actual attribute ID (we will replace it later)
-                        'PK_' . $tableName . '_' . $column['column_name']
-                    ];
-                }
-        
-                // Step 6.3: Handle foreign key constraint (if present)
-                if ($column['is_foreign_key']) {
-                    $referenceTableId = DB::table('General_TABLE_Tables')->where('table_name', $column['reference_table'])->value('table_id');
-                    $referenceAttributeId = DB::table('General_ATTRIBUTE_Tables')->where('table_id', $referenceTableId)->where('attribute_name', $column['reference_column'])->value('attribute_id');
-        
-                    $foreignKeyInsertQuery = "INSERT INTO General_FKEY_Tables (table_id, attribute_id, reference_table_id, reference_attribute_id, constraint_name, timestamp_insert) VALUES (?, ?, ?, ?, ?, NOW())";
-                    $sqlQueries[] = $foreignKeyInsertQuery;
-                    $bindings[] = [
-                        $tableId, // Using the existing or newly inserted table_id
-                        ':attribute_id', // Placeholder for actual attribute ID (we will replace it later)
-                        $referenceTableId,
-                        $referenceAttributeId,
-                        'FK_' . $tableName . '_' . $column['column_name']
-                    ];
-                }
             }
-        
-            // Combine all queries into a single transaction
+    
+            // Step 6: Return the SQL and bindings arrays
             return [
-                'sql' => $sqlQueries, // Combined SQL queries
-                'bindings' => $bindings  // Combined bindings for each query
+                'sql' => $sqlQueries,
+                'bindings' => $bindings,
             ];
         }
     
         throw new Exception('Invalid CREATE TABLE query.');
     }
+    
     private function insertDataIntoTable($query)
     {
         // Step 1: Parse the INSERT INTO query
@@ -1268,7 +1260,8 @@ function bindSqlWithBindings($sql, $bindings) {
             'internal_query' => $internalQuery,
             'bindings' => $bindings,
             'columns' => $columns,
-            'data' => $data
+            'data' => $data,
+            'tablename'=>""
         ];
     }
 
@@ -1310,7 +1303,8 @@ function bindSqlWithBindings($sql, $bindings) {
             'internal_query' => $internalQuery,
             'bindings' => $bindings,
             'columns' => $columns,
-            'data' => $data
+            'data' => $data,
+            'tablename'=>""
         ];
     }
 
@@ -1370,7 +1364,8 @@ function bindSqlWithBindings($sql, $bindings) {
             'internal_query' => $internalQueryColumnsAndValues,
             'bindings' => $bindingsColumnsAndValues,
             'columns' => array_keys($organizedData), // Column names
-            'data' => $organizedData // Organized data for each column (values as arrays)
+            'data' => $organizedData ,// Organized data for each column (values as arrays)
+            'tablename'=>$tableName
         ];
     }
 
@@ -1384,7 +1379,7 @@ private function dropTable($query)
     // Extract the table name from the DROP TABLE query
     if (preg_match('/DROP\s+TABLE\s+([a-zA-Z0-9_]+)/i', $query, $matches)) {
         $tableName = $matches[1];
-
+        $dbName = session('selected_db');
         // Check if the table exists
         $tableExists = DB::table('General_TABLE_Tables')->where('table_name', $tableName)->exists();
         if (!$tableExists) {
@@ -1394,16 +1389,16 @@ private function dropTable($query)
         // Return the SQL queries and bindings with subqueries to get the table_id
         return [
             'sql' => [
-                'DELETE FROM General_FKEY_Tables WHERE table_id = (SELECT table_id FROM General_TABLE_Tables WHERE table_name = ?)',
-                'DELETE FROM General_ATTRIBUTE_Tables WHERE table_id = (SELECT table_id FROM General_TABLE_Tables WHERE table_name = ?)',
-                'DELETE FROM General_PKEY_Tables WHERE table_id = (SELECT table_id FROM General_TABLE_Tables WHERE table_name = ?)',
-                'DELETE FROM General_TABLE_Tables WHERE table_name = ?'
+                'DELETE FROM General_FKEY_Tables WHERE table_id = (SELECT table_id FROM General_TABLE_Tables WHERE table_name = ? and db_id =(SELECT id_bd FROM general_bd_tables WHERE db_name = ?))',
+                'DELETE FROM General_PKEY_Tables WHERE table_id = (SELECT table_id FROM General_TABLE_Tables WHERE table_name = ? and db_id =(SELECT id_bd FROM general_bd_tables WHERE db_name = ?))',
+                'DELETE FROM General_ATTRIBUTE_Tables WHERE table_id = (SELECT table_id FROM General_TABLE_Tables WHERE table_name = ? and db_id =(SELECT id_bd FROM general_bd_tables WHERE db_name = ?))',
+                'DELETE FROM General_TABLE_Tables WHERE table_name = ? and db_id =(SELECT id_bd FROM general_bd_tables WHERE db_name = ?)'
             ],
             'bindings' => [
-                [$tableName], // Simple array with table name
-                [$tableName], // Simple array with table name
-                [$tableName], // Simple array with table name
-                [$tableName]  // Simple array with table name
+                [$tableName,$dbName], // Simple array with table name
+                [$tableName,$dbName], // Simple array with table name
+                [$tableName,$dbName], // Simple array with table name
+                [$tableName,$dbName]  // Simple array with table name
             ]
         ];
     }
@@ -1809,17 +1804,17 @@ private function modifyColumnInTable($query)
 
         $attributeId = $attributeRecord->attribute_id;
 
-        // Construire les requêtes SQL pour modifier la colonne
+        // Construire les requêtes SQL pour modifier la colonne , is_primary_key = ?, is_foreign_key = ?
         return [
             'sql' => [
-                'UPDATE General_ATTRIBUTE_Tables SET data_type = ?, is_primary_key = ?, is_foreign_key = ? WHERE attribute_name =? ;',
+                'UPDATE General_ATTRIBUTE_Tables SET data_type = ? WHERE attribute_name =? ;',
                 'UPDATE General_VALUE_Tables SET timestamp_insert = ? WHERE id_attr = (select attribute_id from General_ATTRIBUTE_Tables where attribute_name=?);'
             ],
             'bindings' => [
                 [
                     $newDataType,
-                    strpos(strtoupper($extraAttributes), 'PRIMARY KEY') !== false ? 1 : 0,
-                    strpos(strtoupper($extraAttributes), 'FOREIGN KEY') !== false ? 1 : 0,
+                    // strpos(strtoupper($extraAttributes), 'PRIMARY KEY') !== false ? 1 : 0,
+                    // strpos(strtoupper($extraAttributes), 'FOREIGN KEY') !== false ? 1 : 0,
                     $attributeName
                 ],
                 [
@@ -1931,7 +1926,7 @@ private function dropColumnFromTable($query)
 private function dropPrimaryKey($query)
 {
     // Match the ALTER TABLE syntax to extract the table name and primary key constraint name
-    if (preg_match('/ALTER\s+TABLE\s+(\w+)\s+DROP\s+PRIMARY\s+KEY\s*\(\s*(\w+)\s*\)/i', $query, $matches)) {
+    if (preg_match($pattern = '/^\s*ALTER\s+TABLE\s+(\w+)\s+DROP\s+PRIMARY\s+KEY\s+(\w+)\s*;?$/i', $query, $matches)) {
         $tableName = $matches[1];       // Extracted table name
         $constraintName = $matches[2];  // Extracted primary key constraint name
 
@@ -2000,8 +1995,8 @@ private function modifyColumnName($query){
             'sql' => 'UPDATE general_attribute_tables ga
                       INNER JOIN general_table_tables gt ON ga.table_id = gt.table_id
                       SET ga.attribute_name = ?
-                      WHERE ga.attribute_name = ? AND gt.table_name = ?',
-            'bindings' => [$newattributeName, $attributeName, $tableName]
+                      WHERE ga.attribute_name = ? AND gt.table_name = ? AND gt.db_id=(select id_bd from  General_BD_Tables where db_name = ?)',
+            'bindings' => [$newattributeName, $attributeName, $tableName,$dbName]
         ];
     }
 
