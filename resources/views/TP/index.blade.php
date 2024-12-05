@@ -444,7 +444,7 @@
                     highlightSelectedDb(response.selected_db);
 
                     // Optional: highlight the query or set focus to the query input after the USE command
-                    $('#sql-query').val(`USE ${response.selected_db};`);
+                    //$('#sql-query').val(`USE ${response.selected_db};`);
                 }
                 if (response.tablename) {
                     // Update UI to display selected database
@@ -543,17 +543,6 @@ function highlightSelectedtable(tablename) {
 }
 
 function loadTables2(dbId, dbName) {
-    // Clear previous results
-    // clearResults();
-
-    // // Update internal query output to show the SELECT and SHOW TABLES queries
-    // const internalQueryOutput = $('#internal-query-output');
-    // internalQueryOutput.empty(); // Clear previous content
-    // const showTablesQueryBubble = $('<div class="query-bubble-string"></div>')
-    //     .text(`SELECT table_name FROM General_TABLE_Tables WHERE db_id = ${dbId};`);
-    // internalQueryOutput.append(showTablesQueryBubble);
-
-    // Fetch tables for the selected database
     $.get('/tables/' + dbId)
         .done(function(data) {
             const tableSelection = document.getElementById('table-selection');
@@ -583,14 +572,6 @@ function loadTables2(dbId, dbName) {
                             },
                             success: function(response) {
                                 displayTableData(response); // Function to handle the response and display data
-
-                                // Show internal query for the selected table
-                                // internalQueryOutput.empty(); // Clear previous content
-                                // const internalQueryBubble = $('<div class="query-bubble-string"></div>').text(`
-                                //     SELECT * FROM ${table};
-                                // `);
-                                // internalQueryOutput.append(internalQueryBubble);
-                                // internalQueryOutput.show();
                             },
                             error: function(xhr, status, error) {
                                 console.error('Failed to fetch table data', status, error, xhr.responseText);
@@ -655,7 +636,7 @@ function loadTables(dbId, dbName) {
     });
 
     // Step 2: Set the SQL query in the textarea for showing tables
-    //document.getElementById('sql-query').value = `USE ${dbName};\nSHOW TABLES;`;
+    document.getElementById('sql-query').value = `USE ${dbName};\nSHOW TABLES;`;
 
     // Step 3: Remove 'selected-db' class from all database items
     document.querySelectorAll('.database-item').forEach(item => {
@@ -683,6 +664,8 @@ function loadTables(dbId, dbName) {
                         // Remove 'selected-table' class from all table items
                         document.querySelectorAll('.table-item').forEach(item => {
                             item.classList.remove('selected-table');
+                            document.getElementById('sql-query').value = `SELECT * FROM ${table};`;
+
                         });
 
                         // Add 'selected-table' class to the clicked table item

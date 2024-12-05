@@ -136,6 +136,8 @@ function bindSqlWithBindings($sql, $bindings) {
                 $dbName = session('selected_db');
                     $alterResult = $this->modifyDatabase($userQuery);
                         session(['selected_db' => $dbName]);
+                        DB::update($alterResult['sql'], $alterResult['bindings']);
+
                         $sql = $alterResult['sql'];
                         $bindings = $alterResult['bindings'];
                     // Replace '?' with binding values
@@ -301,7 +303,11 @@ function bindSqlWithBindings($sql, $bindings) {
                     
                     // Commit the transaction for the first query
                     DB::commit();
-                    
+                    // $bindings=$createResult['bindings'];
+                    // $TableId = DB::table('General_TABLE_Tables')->max('table_id') ;
+                    // foreach ($bindings as &$binding) {
+                    //     $binding[0] = $TableId;  // Update the table_id (which is the first element in each array)
+                    // }
                     // Begin a new transaction for the remaining queries
                     DB::beginTransaction();
                     
@@ -342,16 +348,22 @@ function bindSqlWithBindings($sql, $bindings) {
             
                 // Start a database transaction
                 DB::beginTransaction();
-            
+
                 try {
-                    // Execute each SQL query individually
+                    $TableId = DB::table('General_TABLE_Tables')->max('table_id') ; // Make sure to set TableId to the next auto increment value
+
+                    // Execute DROP queries
                     foreach ($dropResult['sql'] as $index => $sql) {
                         DB::statement($sql, $dropResult['bindings'][$index]);
                     }
-            
+
+                    // Set AUTO_INCREMENT value for the table
+                     // Use DB::statement instead of DB::insert
+
                     // Commit the transaction
                     DB::commit();
-                    
+                    $query = "ALTER TABLE General_TABLE_Tables AUTO_INCREMENT = $TableId;";
+                    DB::statement($query);
                     // Prepare the final query output with placeholders replaced by actual values
                     $finalQueries = [];
                     foreach ($dropResult['sql'] as $index => $sql) {
@@ -1039,9 +1051,9 @@ function bindSqlWithBindings($sql, $bindings) {
                 $columns[] = [
                     'column_name' => $columnMatch[1],
                     'data_type' => $columnMatch[2],
-                    'is_primary_key' => !empty($columnMatch[3]),
-                    'reference_table' => $columnMatch[4] ?? null,
-                    'reference_column' => $columnMatch[5] ?? null,
+                    // 'is_primary_key' => !empty($columnMatch[3]),
+                    // 'reference_table' => $columnMatch[4] ?? null,
+                    // 'reference_column' => $columnMatch[5] ?? null,
                 ];
             }
     
@@ -1581,6 +1593,7 @@ private function dropForeignKey($userQuery)
 
     throw new \Exception('Invalid ALTER TABLE DROP FOREIGN KEY query.');
 }
+
 private function modifyValue($query)
 {
     // Extraire le nom de la table, les colonnes SET et les conditions WHERE
